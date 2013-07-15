@@ -72,6 +72,12 @@ public final class WorkProcessor<T>
         sequenceBarrier.alert();
     }
 
+    @Override
+    public boolean isRunning()
+    {
+        return running.get();
+    }
+
     /**
      * It is ok to have another thread re-run this method after a halt().
      *
@@ -95,7 +101,7 @@ public final class WorkProcessor<T>
         {
             try
             {
-                // if previous sequence was processed - fetch the next sequence and set 
+                // if previous sequence was processed - fetch the next sequence and set
                 // that we have successfully processed the previous sequence
                 // typically, this will be true
                 // this prevents the sequence getting too far forward if an exception
@@ -107,11 +113,12 @@ public final class WorkProcessor<T>
                     sequence.set(nextSequence - 1L);
                 }
 
-                sequenceBarrier.waitFor(nextSequence);
-                event = ringBuffer.get(nextSequence);
-                workHandler.onEvent(event);
-
-                processedSequence = true;
+                if (sequenceBarrier.waitFor(nextSequence) >= nextSequence)
+                {
+                    event = ringBuffer.get(nextSequence);
+                    workHandler.onEvent(event);
+                    processedSequence = true;
+                }
             }
             catch (final AlertException ex)
             {
@@ -122,7 +129,7 @@ public final class WorkProcessor<T>
             }
             catch (final Exception ex)
             {
-                // handle, mark as procesed, unless the exception handler threw an exception
+                // handle, mark as processed, unless the exception handler threw an exception
                 exceptionHandler.handleEventException(ex, nextSequence, event);
                 processedSequence = true;
             }

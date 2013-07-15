@@ -70,7 +70,7 @@ public final class OnePublisherToOneProcessorRawBatchThroughputTest extends Abst
 {
     private static final int BUFFER_SIZE = 1024 * 64;
     private static final long ITERATIONS = 1000L * 1000L * 200L;
-    private final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(DaemonThreadFactory.INSTANCE);
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(DaemonThreadFactory.INSTANCE);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -108,9 +108,9 @@ public final class OnePublisherToOneProcessorRawBatchThroughputTest extends Abst
         final CountDownLatch latch = new CountDownLatch(1);
         long expectedCount = myRunnable.sequence.get() + (ITERATIONS * batchSize);
         myRunnable.reset(latch, expectedCount);
-        EXECUTOR.submit(myRunnable);
+        executor.submit(myRunnable);
         long start = System.currentTimeMillis();
-        
+
         final Sequencer sequencer = this.sequencer;
 
         for (long i = 0; i < ITERATIONS; i++)
@@ -134,19 +134,19 @@ public final class OnePublisherToOneProcessorRawBatchThroughputTest extends Abst
             Thread.sleep(1);
         }
     }
-    
+
     private static class MyRunnable implements Runnable
     {
         private CountDownLatch latch;
         private long expectedCount;
         Sequence sequence = new Sequence(-1);
-        private SequenceBarrier barrier;
+        private final SequenceBarrier barrier;
 
         public MyRunnable(Sequencer sequencer)
         {
             this.barrier = sequencer.newBarrier();
         }
-        
+
         public void reset(CountDownLatch latch, long expectedCount)
         {
             this.latch = latch;
@@ -158,7 +158,7 @@ public final class OnePublisherToOneProcessorRawBatchThroughputTest extends Abst
         {
             long expected = expectedCount;
             long processed = -1;
-            
+
             try
             {
                 do
@@ -167,7 +167,7 @@ public final class OnePublisherToOneProcessorRawBatchThroughputTest extends Abst
                     sequence.set(processed);
                 }
                 while (processed < expected);
-                
+
                 latch.countDown();
                 sequence.setVolatile(processed);
             }
@@ -177,7 +177,7 @@ public final class OnePublisherToOneProcessorRawBatchThroughputTest extends Abst
             }
         }
     }
-    
+
     public static void main(String[] args) throws Exception
     {
         OnePublisherToOneProcessorRawBatchThroughputTest test = new OnePublisherToOneProcessorRawBatchThroughputTest();

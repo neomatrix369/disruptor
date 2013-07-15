@@ -18,11 +18,12 @@ apply plugin: 'osgi'
 apply plugin: 'maven'
 apply plugin: 'signing'
 apply plugin: 'eclipse'   // Only used so the Eclipse STS Gradle plugin can see the 'perf' source set dependencies. :-(
+apply plugin: 'checkstyle'
 
 defaultTasks 'build'
 
 group = 'com.lmax'
-version = new Version(major: 3, revision: 1, stage: "")
+version = new Version(major: 3, minor: 1, revision: 1)
 
 ext {
     fullName = 'Disruptor Framework'
@@ -33,6 +34,7 @@ ext {
 
     javaCompilerExecutable = System.env['JAVA_HOME'] ? System.env['JAVA_HOME'] + '/bin/javac' : 'javac'
 
+    if (!project.hasProperty('sonatypeUrl')) sonatypeUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2'
     if (!project.hasProperty('sonatypeUsername')) sonatypeUsername = ''
     if (!project.hasProperty('sonatypePassword')) sonatypePassword = ''
 }
@@ -162,7 +164,7 @@ uploadArchives {
     repositories.mavenDeployer {
         beforeDeployment { deployment -> signing.signPom(deployment) }
 
-        repository(url: 'https://oss.sonatype.org/service/local/staging/deploy/maven2') {
+        repository(url: sonatypeUrl) {
             authentication(userName: sonatypeUsername, password: sonatypePassword)
         }
 
@@ -187,9 +189,10 @@ task wrapper(type: Wrapper) {
 
 class Version {
     int major, minor = 0, revision = 0
+    boolean snapshot
     String stage
 
     String toString() {
-        "$major.$minor.$revision${stage ? '.' + stage : ''}"
+        "$major.$minor.$revision${stage ? '.' + stage : ''}${snapshot ? '-SNAPSHOT' : ''}"
     }
 }

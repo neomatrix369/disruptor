@@ -6,10 +6,20 @@ A High Performance Inter-Thread Messaging Library
 Maintainer
 ==========
 
-[Michael Barker] (https://github.com/mikeb01)
+[Michael Barker](https://github.com/mikeb01)
 
 Changelog
 ==========
+
+### 3.1.1 Released (9-Jul-2013)
+
+- Fix bug in WorkProcessor where consumers could get ahead of publishers
+
+### 3.1.0 Released (17-Jun-2013)
+
+- Fix bug in Disruptor DSL where some consumers wouldn't be included in the gating sequences.
+- Add support for using the EventTranslator with batch publication.
+- Support timeouts when shutting down the Disruptor using the DSL.
 
 ### 3.0.1 Released (16-Apr-2013)
 

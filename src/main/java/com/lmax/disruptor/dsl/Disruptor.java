@@ -19,7 +19,24 @@ import com.lmax.disruptor.*;
 import com.lmax.disruptor.util.Util;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import com.lmax.disruptor.BatchEventProcessor;
+import com.lmax.disruptor.EventFactory;
+import com.lmax.disruptor.EventHandler;
+import com.lmax.disruptor.EventProcessor;
+import com.lmax.disruptor.EventTranslator;
+import com.lmax.disruptor.EventTranslatorOneArg;
+import com.lmax.disruptor.ExceptionHandler;
+import com.lmax.disruptor.RingBuffer;
+import com.lmax.disruptor.Sequence;
+import com.lmax.disruptor.SequenceBarrier;
+import com.lmax.disruptor.TimeoutException;
+import com.lmax.disruptor.WaitStrategy;
+import com.lmax.disruptor.WorkHandler;
+import com.lmax.disruptor.WorkerPool;
+import com.lmax.disruptor.util.Util;
 
 /**
  * A DSL-style API for setting up the disruptor pattern around a ring buffer (aka the Builder pattern).
@@ -207,6 +224,28 @@ public class Disruptor<T>
     }
 
     /**
+     * Publish an event to the ring buffer.
+     *
+     * @param eventTranslator the translator that will load data into the event.
+     * @param arg A single argument to load into the event
+     */
+    public <A> void publishEvent(final EventTranslatorOneArg<T, A> eventTranslator, A arg)
+    {
+        ringBuffer.publishEvent(eventTranslator, arg);
+    }
+
+    /**
+     * Publish a batch of events to the ring buffer.
+     *
+     * @param eventTranslator the translator that will load data into the event.
+     * @param arg An array single arguments to load into the events. One Per event.
+     */
+    public <A> void publishEvents(final EventTranslatorOneArg<T, A> eventTranslator, A[] arg)
+    {
+        ringBuffer.publishEvents(eventTranslator, arg);
+    }
+
+    /**
      * Starts the event processors and returns the fully configured ring buffer.<p/>
      *
      * The ring buffer is set up to prevent overwriting any entry that is yet to
@@ -218,7 +257,7 @@ public class Disruptor<T>
      */
     public RingBuffer<T> start()
     {
-        Sequence[] gatingSequences = consumerRepository.getLastSequenceInChain();
+        Sequence[] gatingSequences = consumerRepository.getLastSequenceInChain(true);
         ringBuffer.addGatingSequences(gatingSequences);
 
         checkOnlyStartedOnce();
@@ -251,19 +290,38 @@ public class Disruptor<T>
      */
     public void shutdown()
     {
-        while (hasBacklog())
+        try
         {
-            doPretendBusySpin();
+            shutdown(-1, TimeUnit.MILLISECONDS);
         }
-        halt();
+        catch (TimeoutException e)
+        {
+            exceptionHandler.handleOnShutdownException(e);
+        }
     }
 
     /**
-     * Do nothing and return gracefully. Called by while loops that do nothing.
+     * Waits until all events currently in the disruptor have been processed by all event processors
+     * and then halts the processors.
+     * <p/>
+     * <p>This method will not shutdown the executor, nor will it await the final termination of the
+     * processor threads.</p>
      *
+     * @param timeout  the amount of time to wait for all events to be processed. <code>-1</code> will give an infinite timeout
+     * @param timeUnit the unit the timeOut is specified in
      */
-    public void doPretendBusySpin() {
-        return;
+    public void shutdown(final long timeout, final TimeUnit timeUnit) throws TimeoutException
+    {
+        long timeOutAt = System.currentTimeMillis() + timeUnit.toMillis(timeout);
+        while (hasBacklog())
+        {
+            if (timeout >= 0 && System.currentTimeMillis() > timeOutAt)
+            {
+                throw TimeoutException.INSTANCE;
+            }
+            // Busy spin
+        }
+        halt();
     }
 
     /**
@@ -328,7 +386,7 @@ public class Disruptor<T>
     private boolean hasBacklog()
     {
         final long cursor = ringBuffer.getCursor();
-        for (Sequence consumer : consumerRepository.getLastSequenceInChain())
+        for (Sequence consumer : consumerRepository.getLastSequenceInChain(false))
         {
             if (cursor > consumer.get())
             {

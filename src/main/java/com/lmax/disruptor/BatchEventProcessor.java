@@ -58,7 +58,7 @@ public final class BatchEventProcessor<T>
         {
             ((SequenceReportingEventHandler<?>)eventHandler).setSequenceCallback(sequence);
         }
-        
+
         timeoutHandler = (eventHandler instanceof TimeoutHandler) ? (TimeoutHandler) eventHandler : null;
     }
 
@@ -73,6 +73,12 @@ public final class BatchEventProcessor<T>
     {
         running.set(false);
         sequenceBarrier.alert();
+    }
+
+    @Override
+    public boolean isRunning()
+    {
+        return running.get();
     }
 
     /**
@@ -92,7 +98,7 @@ public final class BatchEventProcessor<T>
 
     /**
      * It is ok to have another thread rerun this method after a halt().
-     * 
+     *
      * @throws IllegalStateException if this object instance is already running in a thread
      */
     @Override
@@ -108,16 +114,38 @@ public final class BatchEventProcessor<T>
 
         T event = null;
         long nextSequence = sequence.get() + 1L;
-        while (true)
+        try
         {
-            try
+            while (true)
             {
-                final long availableSequence = sequenceBarrier.waitFor(nextSequence);
-                
-                while (nextSequence <= availableSequence)
+                try
                 {
-                    event = dataProvider.get(nextSequence);
-                    eventHandler.onEvent(event, nextSequence, nextSequence == availableSequence);
+                    final long availableSequence = sequenceBarrier.waitFor(nextSequence);
+
+                    while (nextSequence <= availableSequence)
+                    {
+                        event = dataProvider.get(nextSequence);
+                        eventHandler.onEvent(event, nextSequence, nextSequence == availableSequence);
+                        nextSequence++;
+                    }
+
+                    sequence.set(availableSequence);
+                }
+                catch (final TimeoutException e)
+                {
+                    notifyTimeout(sequence.get());
+                }
+                catch (final AlertException ex)
+                {
+                    if (!running.get())
+                    {
+                        break;
+                    }
+                }
+                catch (final Throwable ex)
+                {
+                    exceptionHandler.handleEventException(ex, nextSequence, event);
+                    sequence.set(nextSequence);
                     nextSequence++;
                 }
 
@@ -134,17 +162,18 @@ public final class BatchEventProcessor<T>
                    break;
                }
             }
-            catch (final Exception ex)
+            catch (final Throwable ex)
             {
                 exceptionHandler.handleEventException(ex, nextSequence, event);
                 sequence.set(nextSequence);
                 nextSequence++;
             }
         }
-
-        notifyShutdown();
-
-        running.set(false);
+        finally
+        {
+            notifyShutdown();
+            running.set(false);
+        }
     }
 
     private void notifyTimeout(final long availableSequence)
@@ -152,11 +181,11 @@ public final class BatchEventProcessor<T>
         try
         {
             if (timeoutHandler != null)
-            {                
+            {
                 timeoutHandler.onTimeout(availableSequence);
             }
         }
-        catch (Exception e)
+        catch (Throwable e)
         {
             exceptionHandler.handleEventException(e, availableSequence, null);
         }
@@ -173,7 +202,7 @@ public final class BatchEventProcessor<T>
             {
                 ((LifecycleAware)eventHandler).onStart();
             }
-            catch (final Exception ex)
+            catch (final Throwable ex)
             {
                 exceptionHandler.handleOnStartException(ex);
             }
@@ -191,7 +220,7 @@ public final class BatchEventProcessor<T>
             {
                 ((LifecycleAware)eventHandler).onShutdown();
             }
-            catch (final Exception ex)
+            catch (final Throwable ex)
             {
                 exceptionHandler.handleOnShutdownException(ex);
             }

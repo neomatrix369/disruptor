@@ -148,25 +148,6 @@ public final class BatchEventProcessor<T>
                     sequence.set(nextSequence);
                     nextSequence++;
                 }
-
-                sequence.set(availableSequence);
-            }
-            catch (final TimeoutException e)
-            {
-                notifyTimeout(sequence.get());
-            }
-            catch (final AlertException ex)
-            {
-               if (!running.get())
-               {
-                   break;
-               }
-            }
-            catch (final Throwable ex)
-            {
-                exceptionHandler.handleEventException(ex, nextSequence, event);
-                sequence.set(nextSequence);
-                nextSequence++;
             }
         }
         finally
